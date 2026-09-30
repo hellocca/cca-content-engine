@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Content Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap">
+<style>
+/* Layout: app shell with a 4-step rail on top and one working panel below. CCA look: deep green, gold, green-tinted neutrals. */
+:root {
+  --bg: #f3f6f3;
+  --surface: #ffffff;
+  --surface-2: #e9eee9;
+  --fg: #14241d;
+  --muted: #5a6a62;
+  --line: #d3dbd4;
+  --green: #1f4a3a;
+  --on-green: #f3f6f3;
+  --gold: #a87526;
+  --gold-soft: #f1e6cf;
+  --sel-bg: #1f4a3a;
+  --sel-fg: #ffffff;
+  --sel-line: #1f4a3a;
+  --p-fun: #b07a24;
+  --p-exp: #1f4a3a;
+  --p-auth: #3a5a72;
+  --ok: #2c7a4b;
+  --warn: #a4571a;
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1914; --surface: #16241d; --surface-2: #1d2f26; --fg: #e6eee8; --muted: #9db0a5;
+    --line: #2b4036; --green: #5fae8c; --on-green: #0f1914; --gold: #d8a955; --gold-soft: #3a2f18;
+    --sel-bg: #2b6e54; --sel-fg: #ffffff; --sel-line: #7cc5a4;
+    --p-fun: #d8a955; --p-exp: #5fae8c; --p-auth: #7fb0d0; --ok: #62c48a; --warn: #e0925a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1914; --surface: #16241d; --surface-2: #1d2f26; --fg: #e6eee8; --muted: #9db0a5;
+  --line: #2b4036; --green: #5fae8c; --on-green: #0f1914; --gold: #d8a955; --gold-soft: #3a2f18;
+  --sel-bg: #2b6e54; --sel-fg: #ffffff; --sel-line: #7cc5a4;
+  --p-fun: #d8a955; --p-exp: #5fae8c; --p-auth: #7fb0d0; --ok: #62c48a; --warn: #e0925a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 20px 64px; }
+.app { max-width: 980px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: 1.7rem; }
+h2 { font-size: 1.4rem; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+.sub { color: var(--muted); font-size: 0.88rem; }
+.eyebrow { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+
+.top { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; justify-content: space-between; }
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.step { min-width: 0; text-align: left; font: inherit; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+.step .n { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 0.78rem; font-weight: 700; background: var(--surface-2); color: var(--muted); }
+.step .t { min-width: 0; font-size: 0.85rem; font-weight: 500; overflow-wrap: anywhere; }
+.step .t small { display: block; font-weight: 400; color: var(--muted); font-size: 0.72rem; }
+.step.done .n { background: var(--green); color: var(--on-green); }
+.step.on { border-color: var(--green); background: var(--surface); color: var(--fg); }
+.step.on .n { background: var(--gold); color: #fff; }
+.step:disabled { opacity: 0.5; cursor: not-allowed; }
+@media (max-width: 620px) { .steps { grid-template-columns: repeat(5, auto); justify-content: start; } .step .t { display: none; } .step.on .t { display: none; } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; gap: 20px; }
+.head { display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.grow { flex: 1 1 auto; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 680px) { .grid2 { grid-template-columns: minmax(0, 1fr); } .panel { padding: 16px; } }
+label.f { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 0.8rem; font-weight: 700; color: var(--muted); }
+label.f .hint { font-weight: 400; }
+input[type=text], textarea, select { font: inherit; font-size: 0.95rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; width: 100%; min-width: 0; }
+textarea { resize: vertical; min-height: 74px; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.btn { font: inherit; font-weight: 700; font-size: 0.9rem; border-radius: 8px; padding: 10px 16px; cursor: pointer; border: 1px solid var(--green); background: var(--green); color: var(--on-green); }
+.btn.ghost { background: transparent; color: var(--fg); border-color: var(--line); font-weight: 500; }
+.btn.gold { background: var(--gold); border-color: var(--gold); color: #fff; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.sm { padding: 6px 11px; font-size: 0.8rem; }
+.foot { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 16px; }
+
+.seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.seg button { font: inherit; font-size: 0.85rem; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+.seg button.on { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-line); }
+.seg button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.note { background: var(--gold-soft); border-radius: 8px; padding: 12px 14px; font-size: 0.85rem; }
+.internal { border: 1px dashed var(--gold); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.internal ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 0.9rem; }
+.tag { display: inline-block; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 1px 6px; }
+
+.pil { display: flex; flex-direction: column; gap: 10px; }
+.pilhead { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.dot.fun { background: var(--p-fun); } .dot.exp { background: var(--p-exp); } .dot.auth { background: var(--p-auth); }
+.count { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.count.bad { color: var(--warn); font-weight: 700; }
+.funnel { font-size: 0.62rem; letter-spacing: 0.08em; font-weight: 700; padding: 2px 7px; border-radius: 4px; color: #fff; }
+.funnel.fun { background: var(--p-fun); } .funnel.exp { background: var(--p-exp); } .funnel.auth { background: var(--p-auth); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: inherit; font-size: 0.92rem; font-weight: 500; padding: 8px 16px 8px 10px; border-radius: 999px; border: 1px dashed var(--line); background: transparent; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 9px; }
+.chip::before { content: ''; flex: none; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line); box-sizing: border-box; }
+.chip:hover { color: var(--fg); border-color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); border: 1px solid var(--sel-line); }
+.chip[aria-pressed="true"]::before { content: '\2713'; display: grid; place-items: center; border: 0; background: var(--sel-fg); color: var(--sel-bg); font-size: 0.68rem; font-weight: 700; }
+
+.tablewrap { overflow-x: auto; }
+.mix { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mrow { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(90px, 0.9fr) minmax(170px, 1.6fr) auto; gap: 10px 14px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.mrow.okrow { border-color: var(--ok); }
+.mrow .topic { font-weight: 700; }
+.mrow .pl { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--muted); min-width: 0; }
+.mrow .pl select { min-width: 0; }
+.rec { font-size: 0.7rem; color: var(--ok); font-weight: 700; }
+.mhead { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(90px, 0.9fr) minmax(170px, 1.6fr) auto; gap: 10px 14px; padding: 0 12px; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.mhead span:last-child, .mrow .ap { min-width: 92px; }
+@media (max-width: 680px) { .mhead { display: none; } .mrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .mrow .sel { grid-column: 1 / -1; } }
+.mrow .ap { font: inherit; font-size: 0.8rem; font-weight: 700; padding: 7px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--fg); }
+.mrow .ap[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: #fff; }
+.hintline { font-size: 0.78rem; color: var(--muted); grid-column: 1 / -1; line-height: 1.45; }
+.hintline b { color: var(--fg); font-weight: 700; }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button { font: inherit; font-size: 0.8rem; padding: 6px 11px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; font-variant-numeric: tabular-nums; }
+.tabs button.on { background: var(--sel-bg); border-color: var(--sel-line); color: var(--sel-fg); }
+.slide { border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: var(--bg); }
+.slidehead { display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: center; }
+.item { display: flex; flex-direction: column; gap: 3px; }
+.item .k { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+.item .v { font-size: 1rem; overflow-wrap: anywhere; }
+.item ul { margin: 2px 0 0; padding-left: 18px; }
+.item.h { border-top: 1px solid var(--line); padding-top: 12px; }
+.item.h .k { color: var(--fg); font-family: var(--font-display); font-size: 1rem; letter-spacing: 0; text-transform: none; }
+.fallback { display: flex; flex-direction: column; gap: 6px; }
+.fallback textarea { min-height: 120px; font-size: 0.8rem; }
+.ctopic { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.ctopic:first-of-type { border-top: 0; padding-top: 0; }
+.pieces { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 3px; font-size: 0.92rem; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) { .panel { animation: rise 0.25s ease-out; } @keyframes rise { from { opacity: 0.4; transform: translateY(6px); } to { opacity: 1; transform: none; } } }
+
+.plist { display: flex; flex-direction: column; gap: 8px; }
+.prow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--surface); }
+.prow-open { flex: 1 1 auto; text-align: left; justify-content: flex-start; }
+.prow .count { white-space: nowrap; }
+</style>
+<style>:root{--_pad-top:env(safe-area-inset-top,0px);--_pad-bottom:env(safe-area-inset-bottom,0px);padding-top:var(--_pad-top);padding-bottom:var(--_pad-bottom)} html,body{margin:0} img{max-width:100%} [hidden]{display:none!important}</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+var STYLES = [
+  { id: 'visual', name: 'Visual Explanation', hint: 'Show the idea. Break it down.', dir: function (t) { return 'A whiteboard-style breakdown of ' + t + ', one idea at a time'; } },
+  { id: 'bold', name: 'Bold Statement', hint: 'Challenge a belief.', dir: function (t) { return 'A one-line belief about ' + t + ' that challenges what people assume'; } },
+  { id: 'yesno', name: 'Yes / No', hint: 'Force a decision. Keep it simple.', dir: function (t) { return 'Quick yes-or-no calls on common ' + t + ' decisions'; } },
+  { id: 'comedic', beta: true, name: 'Comedic Explainer', hint: 'Teach through entertainment.', dir: function (t) { return 'A funny explainer that teaches ' + t + ' through your industry'; } },
+  { id: 'game', name: 'Game / Interaction', hint: 'Rank, react, debate. Create opinions.', dir: function (t) { return 'A rank-and-react game about ' + t + ' with a guest or team member'; } },
+  { id: 'pov', name: 'POV / Documentary', hint: 'Let people into your world.', dir: function (t) { return 'A behind-the-scenes look at ' + t + ' in your day'; } },
+  { id: 'proof', name: 'Visual Proof', hint: 'Show the evidence. Results over words.', dir: function (t) { return 'A proof video: a real ' + t + ' result, shown not told'; } },
+  { id: 'tier', name: 'Tier List / Ranking', hint: 'Turn opinions into conversation.', dir: function (t) { return 'A ranking video: what matters most and least in ' + t; } }
+];
+var TEAM_STYLES = { game: 1, pov: 1 };
+var STYLE_INFO = {
+  visual: { struct: 'One idea in about 4-6 steps, with a visual for each step.', needs: 'Host, one diagram, photo or on-screen list per step.' },
+  bold: { struct: 'A hard claim with a number, then numbered points with short reasoning.', needs: 'Host, a mic, simple on-screen numbering.' },
+  yesno: { struct: 'Rapid-fire questions, one-word answers, myths vs facts (often 9-20).', needs: 'Host with real expertise, on-screen text, optional buzzers.' },
+  game: { struct: 'A repeating game with the team and the boss, a few rounds, a twist at the end.', needs: 'A team of 3-6, the boss or host on camera, a simple graphics board.' },
+  pov: { struct: 'A real day or event: behind-the-scenes montage, one interview, optional client quote.', needs: 'A second person to ask questions, a real event or shoot, b-roll.' },
+  proof: { struct: 'The owner talks while a real result is visible in frame. Draft: only one example so far.', needs: 'A real, checkable result that can be shown on camera.' },
+  tier: { struct: 'About 8-10 items, a tier and a one-line reason each, ending with a full S to D summary.', needs: 'Host, a tier board graphic, one icon per item.' },
+  comedic: { struct: 'Beta. No reference videos yet.', needs: '' }
+};
+var PILLARS = [
+  { id: 'fun', name: 'Fun', funnel: 'TOFU', angle: 'Entertain', tag: 'Trends, team, fun. Get attention.', goal: 'Get noticed and stay top of mind.', fit: ['game', 'pov', 'yesno', 'tier'] },
+  { id: 'exp', name: 'Expertise', funnel: 'MOFU', angle: 'Teach', tag: 'Problem solving and tips.', goal: 'Show you can solve real problems.', fit: ['tier', 'visual', 'yesno', 'bold'] },
+  { id: 'auth', name: 'Authority', funnel: 'BOFU', angle: 'Prove', tag: 'Show the business, the process, the team.', goal: 'Turn attention into trust, and trust into leads.', fit: ['proof', 'pov', 'bold'] }
+];
+var PRESETS = {
+  media: {
+    label: 'Media & entertainment',
+    dna: {
+      person: 'Jordan Lee',
+      name: 'Lumen Studios',
+      business: 'Media & entertainment business owner',
+      title: 'Founder & Creative Director',
+      industry: 'Media & Entertainment',
+      personality: 'Bold, energetic, hands-on storyteller',
+      goal: 'Lead generation',
+      experience: 'Comfortable on camera, has posted before but not consistently.',
+      icp: 'Business owners who want more views and leads but have no time to create content.',
+      offer: 'Podcast production, brand films and short-form social video.'
+    },
+    pains: ['No time to create enough content', 'Wants more views, not just more posts', 'Needs a steady flow of leads from content', 'Unsure what to post next'],
+    topics: {
+      fun: ['Trends', 'Team', 'Office Life', 'Bloopers'],
+      exp: ['Content', 'Money', 'Marketing', 'Time', 'Growth'],
+      auth: ['Client Results', 'Behind the Scenes', 'Our Process', 'Shoots']
+    },
+    pillarNames: {
+      fun: { name: 'Studio Life', sub: 'Behind the Brand', goal: 'Get seen and stay memorable.' },
+      exp: { name: 'The Content Playbook', sub: 'What Actually Works', goal: 'Be the one they learn from.' },
+      auth: { name: 'Real Client Wins', sub: 'Proof, Not Promises', goal: 'Turn trust into booked calls.' }
+    },
+    contentDeck: {
+      from: 'Jordan is a good video producer.',
+      to: 'Look at what Jordan actually does.',
+      facets: ['Content that converts, not just gets views', 'Produces podcasts, brand films and short-form', 'Fast, hands-on, energetic on set', 'Views that turn into booked leads'],
+      claims: [['I make great content', 'Show a shoot from setup to final cut'], ['I get you views', 'Show a real view spike on a client post'], ['I understand your brand', 'Show a brand brief becoming a finished film'], ['I save you time', 'Show a full month batched in one shoot day']],
+      online: { tagline: 'Useful. Visual. Engaging. Shareable.', groups: [
+        { name: 'Comment Jar', bullets: ['Real client questions', 'Real handles', 'Real answers'] },
+        { name: 'Prop-Led Breakdown', bullets: ['Use the real gear', 'Make it visual', "Show, don't tell"] },
+        { name: 'Format Teardown', bullets: ['What made it work', 'Hook to CTA', 'Steal-worthy structure'] }
+      ] },
+      offline: { tagline: 'More than a shoot.', items: ['Real client shoots', 'Studio recording sessions', 'On-location days', 'The edit room', 'Jordan in action'] },
+      association: { tagline: 'Stronger associations. A more trusted Jordan.', groups: [
+        { name: 'With Clients', bullets: ['Real results', 'Trusted advice', 'Repeat work', 'A partner they recommend'] },
+        { name: 'With Brands', bullets: ['Collaborations', 'Co-created content', 'Shared audiences'] },
+        { name: 'Credible Relationships', bullets: ['Professionals', 'Communities', 'Platforms', 'Partners'] }
+      ] },
+      themes: ['What Jordan knows about content', 'What Jordan does on set', 'How Jordan handles clients', 'Why consistency wins']
+    },
+    contentBank: {
+      'Trends': ['Trending audio for brands', 'Formats worth copying', 'Trends to skip'],
+      'Team': ['A day with the team', 'Who does what on set', 'Team picks their best shot'],
+      'Office Life': ['Morning at the studio', 'How we plan a shoot', 'Editing marathon'],
+      'Bloopers': ['Shoot fails', 'On-set laughs', 'Take 27'],
+      'Content': ['Posting frequency', 'Content formats', 'Repurposing old content'],
+      'Money': ['Pricing your content', 'Budget vs results', 'What a video is worth'],
+      'Marketing': ['Hooks that work', 'Thumbnails that get clicks', 'CTA mistakes'],
+      'Time': ['Batch filming', 'A month of content in a day', 'Planning ahead'],
+      'Growth': ['0 to 10k plays', 'What actually scaled us', 'Growth myths'],
+      'Client Results': ['A client view spike', 'Leads from one video', 'Before and after reach'],
+      'Behind the Scenes': ['Setting up a shoot', 'How we edit', 'Client shoot day'],
+      'Our Process': ['From brief to post', 'Our shoot checklist', 'How we review a cut'],
+      'Shoots': ['On location', 'Studio day', 'Run-and-gun shoot']
+    },
+    venn: [['Production', 'Content that gets made'], ['Storytelling', 'Content that gets seen']],
+    overlap: 'Leads that stay',
+    tagline: 'Real work. Real views. Real leads.',
+    keywords: ['Create', 'Show', 'Prove', 'Grow'],
+    offline: ['Shoots and recording sessions', 'Client meetings', 'Real interactions'],
+    belief: 'Consistent, real content beats perfect content that never gets posted.',
+    headed: 'Turning views into leads for busy business owners.',
+    quote: 'You do not need more time. You need a system.',
+    bio: 'Media & entertainment. Helping busy business owners get seen and get leads through video. Real work. Real people. Real results.'
+  },
+  design: {
+    label: 'Architecture & interior design',
+    dna: {
+      person: 'Harper Vale',
+      name: 'Harbor & Vale Design',
+      business: 'Architecture & interior design firm owner',
+      title: 'Principal Designer',
+      industry: 'Architecture & Interior Design',
+      personality: 'Calm, precise, detail-driven',
+      goal: 'High-value client enquiries',
+      experience: 'New to content, strong on the work but camera-shy.',
+      icp: 'Property developers and luxury homeowners who need a designer they can trust with a large budget.',
+      offer: 'Architecture, interior design and project management for hospitality and residential projects.'
+    },
+    pains: ['Hard to tell great design from average before hiring', 'Big budgets mean slow, careful decisions', 'Referrals are the only steady source of leads', 'Worry about delays and cost overruns'],
+    topics: {
+      fun: ['Trends', 'Team', 'Site Life', 'Reveals'],
+      exp: ['Layout', 'Lighting', 'Budget', 'Mistakes'],
+      auth: ['Projects', 'Client Stories', 'Our Process', 'Site Visits']
+    },
+    pillarNames: {
+      fun: { name: 'Design Life', sub: 'Behind the Studio', goal: 'Get noticed by the right people.' },
+      exp: { name: 'Design Decisions', sub: 'How Good Spaces Happen', goal: 'Be the expert they rely on.' },
+      auth: { name: 'The Portfolio', sub: 'Real Projects, Real Proof', goal: 'Turn proof into enquiries.' }
+    },
+    contentDeck: {
+      from: 'Harper is a talented designer.',
+      to: 'Look at what Harper actually does.',
+      facets: ['What makes a space genuinely work', 'Architecture, interiors and project management', 'Calm, precise, collaborative on site', 'Spaces clients trust with big budgets'],
+      claims: [['I design beautiful spaces', 'Show a room from empty to finished'], ['I keep to budget', 'Show a real budget decision on site'], ['I understand your needs', 'Show a client brief becoming a plan'], ['I manage the whole build', 'Show a site visit solving a real problem']],
+      online: { tagline: 'Useful. Visual. Engaging. Shareable.', groups: [
+        { name: 'Design Q&A', bullets: ['Real DM questions', 'Real homes', 'Real answers'] },
+        { name: 'Material Breakdown', bullets: ['Use real samples', 'Make it visual', "Show, don't tell"] },
+        { name: 'Common Mistakes', bullets: ['Layout errors', 'Lighting errors', 'Budget errors'] }
+      ] },
+      offline: { tagline: 'More than a build.', items: ['Site visits', 'Client walkthroughs', 'Install days', 'The design process', 'Harper in action'] },
+      association: { tagline: 'Stronger associations. A more trusted Harper.', groups: [
+        { name: 'With Clients', bullets: ['Trusted advice', 'Real concerns heard', 'Thoughtful conversations', 'A designer they can ask'] },
+        { name: 'With Developers', bullets: ['Repeat projects', 'Large builds', 'Shared standards'] },
+        { name: 'Credible Relationships', bullets: ['Professionals', 'Trade partners', 'Institutions', 'Suppliers'] }
+      ] },
+      themes: ['What Harper knows about design', 'What Harper does on site', 'How Harper handles clients', 'Why the right decisions matter']
+    },
+    contentBank: {
+      'Trends': ['Trending materials', 'Design trends worth keeping', 'Trends to avoid'],
+      'Team': ['Meet the studio', 'Who does what', 'A day with the site team'],
+      'Site Life': ['A day on site', 'Install day', 'A site problem solved'],
+      'Reveals': ['Empty to finished', 'Before and after a room', 'Full reveal walkthrough'],
+      'Layout': ['Open vs closed plan', 'Flow mistakes', 'Small-space layout'],
+      'Lighting': ['Layered lighting', 'Common lighting errors', 'Using natural light'],
+      'Budget': ['Where to spend', 'Where to save', 'Budget vs premium'],
+      'Mistakes': ['Renovation mistakes', 'Hiring mistakes', 'Timeline mistakes'],
+      'Projects': ['A hotel project', 'A home project', 'A tricky brief'],
+      'Client Stories': ['A nervous client', 'A big-budget build', 'A returning client'],
+      'Our Process': ['Brief to concept', 'Concept to build', 'How we hand over'],
+      'Site Visits': ['First site visit', 'A progress visit', 'The final check']
+    },
+    venn: [['Architecture', 'Spaces that work'], ['Interior design', 'Spaces that feel right']],
+    overlap: 'Spaces that last',
+    tagline: 'Real projects. Real decisions. Real proof.',
+    keywords: ['Space', 'People', 'Purpose', 'Proof'],
+    offline: ['Site visits', 'Client walkthroughs', 'Real projects'],
+    belief: 'Great design fits the people, the place and the business.',
+    headed: 'Winning larger projects with clients who trust the process.',
+    quote: 'Every space starts with a decision. I explain mine.',
+    bio: 'Architecture & interior design for hotels and high-end homes. Creating spaces with purpose. Real projects. Real decisions. Real proof.'
+  }
+};
+
+var state = { screen: 'home', projectId: null, projectName: '', saved: true, phase: 'fresh', step: 0, preset: 'media', dna: {}, sel: {}, slots: [], team: true, mixSig: '', ok: {}, slide: 0, numContents: 12 };
+var maxStep = 0;
+var MIN_TOPICS = 4;
+
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function $(s) { return document.querySelector(s); }
+function P() { return PRESETS[state.preset]; }
+function styleById(id) { return STYLES.filter(function (s) { return s.id === id; })[0]; }
+function pillarById(id) { return PILLARS.filter(function (p) { return p.id === id; })[0]; }
+
+function loadPreset(key) {
+  state.preset = key;
+  state.dna = JSON.parse(JSON.stringify(PRESETS[key].dna));
+  state.sel = {}; state.slots = []; state.mixSig = ''; state.ok = {};
+  PILLARS.forEach(function (pl) { PRESETS[key].topics[pl.id].forEach(function (t) { state.sel[t] = true; }); });
+}
+function pillarTopics(pid) { return P().topics[pid] || []; }
+function selInPillar(pid) { return pillarTopics(pid).filter(function (t) { return state.sel[t]; }); }
+function selCount() { var n = 0; PILLARS.forEach(function (pl) { n += selInPillar(pl.id).length; }); return n; }
+/* The pillar is set when the AI generates the topic (TOFU / MOFU / BOFU), so it is fixed. Every stage must have at least one topic. */
+function fitOk() { return PILLARS.every(function (pl) { return selInPillar(pl.id).length >= 1; }); }
+function buildMix() {
+  var sig = ''; PILLARS.forEach(function (pl) { sig += pl.id + ':' + selInPillar(pl.id).join(',') + ';'; }); sig += state.team;
+  if (sig === state.mixSig && state.slots.length) return;
+  var slots = [];
+  PILLARS.forEach(function (pl) {
+    var fit = pl.fit.filter(function (id) { return state.team || !TEAM_STYLES[id]; });
+    if (fit.length < pl.fit.length) { ['bold', 'visual', 'tier', 'yesno', 'proof'].forEach(function (id) { if (fit.length < pl.fit.length && fit.indexOf(id) < 0) fit.push(id); }); }
+    if (!fit.length) fit = ['bold'];
+    selInPillar(pl.id).forEach(function (t, k) {
+      var rec = fit[k % fit.length];
+      slots.push({ id: pl.id + '-' + k, topic: t, pillar: pl.id, style: rec, rec: rec });
+    });
+  });
+  state.slots = slots; state.ok = {}; state.mixSig = sig;
+}
+function combos() {
+  return state.slots.map(function (x) { return { id: x.id, topic: x.topic, pillar: pillarById(x.pillar), style: x.style, rec: x.rec }; });
+}
+function pillarCount(id) { return state.slots.filter(function (x) { return x.pillar === id; }).length; }
+function coverageOk() { return PILLARS.every(function (pl) { return pillarCount(pl.id) >= 1; }); }
+function allApproved() { return state.slots.length > 0 && coverageOk() && state.slots.every(function (x) { return state.ok[x.id]; }); }
+
+/* ---------- Part 2: blueprint content (locked 8-slide format) ---------- */
+function buildSlides() {
+  var d = Object.assign({ person: '', name: '', title: '', industry: '', goal: '', experience: '', icp: '', offer: '' }, state.dna), p = P(), cs = combos();
+  function byPillar(id) { return cs.filter(function (c) { return c.pillar.id === id; }); }
+  var used = {};
+  function pick(id, n) {
+    var list = byPillar(id), out = [];
+    list.forEach(function (c) { if (out.length < n && !used[c.topic]) { out.push(c); used[c.topic] = 1; } });
+    list.forEach(function (c) { if (out.length < n && out.indexOf(c) < 0) out.push(c); });
+    return out;
+  }
+  var vids = pick('exp', 2).concat(pick('fun', 2), pick('auth', 1));
+  var goalLc = d.goal.toLowerCase();
+  var slides = [];
+  slides.push({ name: 'Cover', items: [
+    { k: 'Blueprint title', v: 'Authority Blueprint' },
+    { k: 'Client name', v: d.person },
+    { k: 'Business / company name', v: d.name },
+    { k: 'Professional title', v: d.title },
+    { k: 'Industry', v: d.industry }
+  ] });
+  slides.push({ name: 'Authority Content Strategy', items: [
+    { k: 'Headline', v: 'Authority Content Strategy' },
+    { k: 'Subhead', v: 'We turn real work into evidence.' },
+    { k: 'Left circle', v: p.venn[0][0] + ' — ' + p.venn[0][1] },
+    { k: 'Right circle', v: p.venn[1][0] + ' — ' + p.venn[1][1] },
+    { k: 'Overlap', v: p.overlap },
+    { k: 'Bottom row', list: ['Show — real people', 'Educate — in simple words', 'Prove — with real results', 'Grow — your ' + goalLc] }
+  ] });
+  slides.push({ name: 'Every piece answers 5 questions', items: [
+    { k: 'Headline', v: 'Every piece of content answers 5 questions' },
+    { k: 'Questions', list: ['Who is ' + d.name + '? Show your story.', 'What do you do? Show the work.', 'How do you think? Share your perspective.', 'What happened? Show the result.', 'Who can verify it? Let others share.'] }
+  ] });
+  slides.push({ name: 'Offline — Do the work', items: [
+    { k: 'Headline', v: 'Offline' },
+    { k: 'Subhead', v: 'Do the work' },
+    { k: 'What this looks like', list: p.offline },
+    { k: 'Why it matters', v: 'Authority starts with real work worth documenting.' }
+  ] });
+  slides.push({ name: 'Online — Document the work', items: [
+    { k: 'Headline', v: 'Online' },
+    { k: 'Subhead', v: 'Document the work' },
+    { k: 'What this looks like', list: ['Reels and videos', 'Before, during and after', 'Consistent content'] },
+    { k: 'Why it matters', v: 'If it is not documented, it did not happen for your audience.' }
+  ] });
+  slides.push({ name: 'Association — Build trust', items: [
+    { k: 'Headline', v: 'Association' },
+    { k: 'Subhead', v: 'Build trust' },
+    { k: 'What this looks like', list: ['Credentials', 'Clients and community', 'Collaborations'] },
+    { k: 'Why it matters', v: 'Who you stand with proves who you are.' },
+    { k: 'Closing line', v: 'More reach. More trust. A bigger impact.' }
+  ] });
+  slides.push({ name: 'Profile Positioning', items: [
+    { k: 'I help', v: d.icp },
+    { k: 'Why me', v: d.title + ', ' + d.industry },
+    { k: 'I believe', v: p.belief },
+    { k: 'Where I am headed', v: p.headed },
+    { k: 'Signature quote', v: p.quote + ' — ' + d.name }
+  ] });
+  var pi = [];
+  PILLARS.forEach(function (pl, i) {
+    var pn = (p.pillarNames && p.pillarNames[pl.id]) || { name: pl.name, sub: pl.tag, goal: pl.goal };
+    pi.push({ h: 1, k: (i + 1) + ' · ' + pn.name });
+    pi.push({ k: 'Subtitle', v: pn.sub });
+    pi.push({ k: 'Topics', list: byPillar(pl.id).map(function (c) { return c.topic; }).filter(function (t, i, arr) { return arr.indexOf(t) === i; }) });
+    pi.push({ k: 'Goal', v: pn.goal });
+  });
+  slides.push({ name: 'The 3 Content Pillars', items: pi });
+  slides.push({ name: '3 Pinned Billboard Posts', items: [
+    { k: 'Profile bio', v: p.bio },
+    { k: 'Highlights', list: ['Start Here', 'Client Stories', 'Behind the Scenes', 'Our Work', 'Community'] },
+    { k: 'Pin 1 · My Story', v: 'Why I started, in my own words.' },
+    { k: 'Pin 2 · How I Help', v: 'How I work, shown through real projects.' },
+    { k: 'Pin 3 · Real Results', v: 'Real people. Real outcomes.' },
+    { k: 'Closing line', v: 'Turn visitors into followers. Turn followers into clients.' }
+  ] });
+  slides.push({ name: 'Five Video Projects', items: [
+    { k: 'Headline', v: 'Five Video Projects' },
+    { k: 'Subhead', v: 'Your first 5 directions.' },
+    { k: 'Videos', list: vids.map(function (c, i) { return (i + 1) + '. ' + c.pillar.name + ' · ' + c.topic + ' — ' + styleById(c.style).dir(c.topic.toLowerCase()); }) },
+    { k: 'Closing line', v: 'Start with 5 videos. Build momentum.' }
+  ] });
+  return slides;
+}
+function slideText(s, i) {
+  var t = 'SLIDE ' + (i + 1) + ' — ' + s.name.toUpperCase() + '\n';
+  s.items.forEach(function (it) {
+    if (it.h) { t += '\n' + it.k + '\n'; return; }
+    t += it.k + ': ';
+    if (it.list) { t += '\n' + it.list.map(function (x) { return '  - ' + x; }).join('\n') + '\n'; } else { t += it.v + '\n'; }
+  });
+  return t;
+}
+
+/* ---------- Part 3: content (client deck + internal branching) ---------- */
+function contentDist() {
+  var cs = combos(), n = cs.length; if (!n) return [];
+  var total = Math.max(n, state.numContents), base = Math.floor(total / n), extra = total % n;
+  return cs.map(function (c, i) { return { combo: c, count: base + (i < extra ? 1 : 0) }; });
+}
+function buildTopics() {
+  var p = P();
+  return contentDist().map(function (d) {
+    var c = d.combo, bank = (p.contentBank && p.contentBank[c.topic]) || [c.topic + ' angle'], pieces = [];
+    for (var i = 0; i < d.count; i++) {
+      var t = bank[i % bank.length];
+      if (i >= bank.length) t += ' (' + (Math.floor(i / bank.length) + 1) + ')';
+      pieces.push(t);
+    }
+    return { combo: c, style: styleById(c.style), pieces: pieces };
+  });
+}
+function buildContentDeck() {
+  var d = Object.assign({ person: '', name: '', title: '', industry: '', goal: '', experience: '', icp: '', offer: '' }, state.dna), p = P(), cd = p.contentDeck, slides = [];
+  slides.push({ name: 'Proposed Direction', items: [
+    { k: 'Headline', v: 'Show the Authority' },
+    { k: 'From', v: cd.from },
+    { k: 'To', v: cd.to },
+    { k: 'What ' + d.person + ' Knows', v: cd.facets[0] },
+    { k: 'What ' + d.person + ' Does', v: cd.facets[1] },
+    { k: 'How ' + d.person + ' Handles It', v: cd.facets[2] },
+    { k: 'What People Experience', v: cd.facets[3] }
+  ] });
+  slides.push({ name: 'How?', items: [
+    { k: 'Headline', v: 'How?' },
+    { k: 'Subhead', v: "Let's make it happen." }
+  ] });
+  slides.push({ name: 'Tell vs Show', items: [
+    { k: 'Headline', v: 'Stop telling. Start showing.' },
+    { k: 'The point', v: 'These may all be true. But they are still claims. The proof becomes the brand.' }
+  ].concat(cd.claims.map(function (pair) { return { k: 'Tell: "' + pair[0] + '"', v: 'Show: ' + pair[1] }; })) });
+  var onItems = [{ k: 'Engine', v: 'Build visibility' }];
+  cd.online.groups.forEach(function (g) { onItems.push({ k: g.name, list: g.bullets }); });
+  onItems.push({ k: 'Tagline', v: cd.online.tagline });
+  slides.push({ name: 'Online — Show What ' + d.person + ' Knows', items: onItems });
+  slides.push({ name: 'Offline — Show What ' + d.person + ' Does', items: [
+    { k: 'Engine', v: 'Build credibility' }, { k: 'What this looks like', list: cd.offline.items }, { k: 'Tagline', v: cd.offline.tagline }
+  ] });
+  var asItems = [{ k: 'Engine', v: 'Build status' }];
+  cd.association.groups.forEach(function (g) { asItems.push({ k: g.name, list: g.bullets }); });
+  asItems.push({ k: 'Tagline', v: cd.association.tagline });
+  slides.push({ name: 'Association — Show What ' + d.person + ' Is Known For', items: asItems });
+  slides.push({ name: 'Next Phase Content', items: [
+    { k: 'Total contents', v: String(state.numContents) },
+    { k: 'This phase covers', list: cd.themes },
+    { k: 'One direction. Three engines.', list: ['Online — Build Visibility', 'Offline — Build Credibility', 'Association — Build Status'] },
+    { k: 'Note', v: 'Not allocating the ' + state.numContents + ' pieces by engine yet.' }
+  ] });
+  return slides;
+}
+function deckText() { var sl = buildContentDeck(); return sl.map(function (s, i) { return slideText(s, i); }).join('\n'); }
+function topicsText() {
+  return buildTopics().map(function (t) {
+    var c = t.combo;
+    return c.topic.toUpperCase() + ' — ' + t.style.name + ' (' + c.pillar.funnel + ' / ' + c.pillar.name + ')\n' +
+      t.pieces.map(function (pc, i) { return '  ' + (i + 1) + '. ' + pc; }).join('\n');
+  }).join('\n\n');
+}
+
+/* ---------- rendering ---------- */
+var STEPNAMES = [['Customer DNA', 'Goal, experience, ICP, offer'], ['Topics', 'By funnel stage'], ['Styles', 'AI mixes, you approve'], ['Blueprint', 'Slide content'], ['Content', 'Optional: branch it out']];
+function renderSteps() {
+  $('#steps').innerHTML = STEPNAMES.map(function (s, i) {
+    var cls = 'step' + (i === state.step ? ' on' : '') + (i < state.step ? ' done' : '');
+    return '<button class="' + cls + '" data-go="' + i + '"' + (i > maxStep ? ' disabled' : '') + ' aria-label="Step ' + (i + 1) + ': ' + s[0] + '"><span class="n">' + (i + 1) + '</span><span class="t">' + s[0] + '<small>' + s[1] + '</small></span></button>';
+  }).join('');
+}
+function fieldHtml(id, label, hint, val, multi) {
+  var inp = multi ? '<textarea id="' + id + '" data-f="' + id + '">' + esc(val) + '</textarea>' : '<input type="text" id="' + id + '" data-f="' + id + '" value="' + esc(val) + '">';
+  return '<label class="f" for="' + id + '">' + label + (hint ? ' <span class="hint">' + hint + '</span>' : '') + inp + '</label>';
+}
+function viewDna() {
+  var d = state.dna;
+  return '<section class="panel">' +
+    '<div class="head"><span class="eyebrow">Step 1 · Customer DNA</span><h2>Tell the engine who the client is</h2><p class="sub">The ICP matters most. Every topic and video direction comes from it.</p></div>' +
+    '<div class="row"><span class="sub">Load an example:</span><div class="seg" id="presets">' +
+    Object.keys(PRESETS).map(function (k) { return '<button data-preset="' + k + '" class="' + (state.preset === k ? 'on' : '') + '">' + PRESETS[k].label + '</button>'; }).join('') + '</div></div>' +
+    '<div class="row"><span class="sub">Category:</span><div class="seg"><button class="on">Business owner</button><button disabled title="Next round">Coach / solopreneur (next round)</button></div></div>' +
+    '<div class="row"><span class="sub">Team on camera:</span><div class="seg"><button data-team="1" class="' + (state.team ? 'on' : '') + '">Yes</button><button data-team="0" class="' + (state.team ? '' : 'on') + '">No, solo owner</button></div></div>' +
+    '<div class="grid2">' + fieldHtml('person', 'Client name', '', d.person) + fieldHtml('name', 'Business / company name', '', d.name) + '</div>' +
+    '<div class="grid2">' + fieldHtml('title', 'Professional title', '', d.title) + fieldHtml('industry', 'Industry / category', '', d.industry) + '</div>' +
+    '<div class="grid2">' + fieldHtml('goal', 'Goal', '', d.goal) + fieldHtml('experience', 'Content experience', 'Have they created content before?', d.experience, true) + '</div>' +
+    '<div class="grid2">' + fieldHtml('icp', 'ICP (ideal client)', 'Who they sell to', d.icp, true) + fieldHtml('offer', 'Products and services', '', d.offer, true) + '</div>' +
+    '<div class="foot"><span class="sub">Mock note: topics come from the selected example. The live app will read your DNA.</span><button class="btn" data-go="1" data-unlock="1">Read DNA and suggest topics</button></div>' +
+    '</section>';
+}
+function viewTopics() {
+  var n = selCount(), all = 0;
+  PILLARS.forEach(function (pl) { all += pillarTopics(pl.id).length; });
+  var low = n < MIN_TOPICS || !fitOk();
+  return '<section class="panel">' +
+    '<div class="head"><span class="eyebrow">Step 2 · Topics</span><h2>Pick the topics to speak about</h2><p class="sub">The AI generates topics already sorted into the funnel: TOFU to get attention, MOFU to teach, BOFU to prove. The pillar is decided when the topic is generated, so it also sets the styles. Tap to select.</p></div>' +
+    '<div class="internal"><span class="tag">Internal, not shown to the client</span><h3>ICP pain points the AI found</h3><ul>' + P().pains.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>' +
+    PILLARS.map(function (pl) {
+      var c = selInPillar(pl.id).length;
+      return '<div class="pil"><div class="pilhead"><span class="dot ' + pl.id + '"></span><span class="funnel ' + pl.id + '">' + pl.funnel + '</span><h3>' + pl.name + '</h3><span class="sub">' + pl.tag + '</span><span class="count' + (c < 1 ? ' bad' : '') + '">' + c + ' selected' + (c < 1 ? ' · needs 1' : '') + '</span></div><div class="chips">' +
+        pillarTopics(pl.id).map(function (t) { return '<button class="chip" data-topic="' + esc(t) + '" aria-pressed="' + (state.sel[t] ? 'true' : 'false') + '">' + esc(t) + '</button>'; }).join('') + '</div></div>';
+    }).join('') +
+    '<div class="foot"><div class="row"><button class="btn ghost" data-go="0">Back</button><button class="btn ghost sm" id="selAll">Select all ' + all + '</button><span class="count' + (low ? ' bad' : '') + '">' + n + ' selected' + (low ? ' · pick at least ' + MIN_TOPICS + ', 1+ per stage' : '') + '</span></div>' +
+    '<button class="btn" data-go="2" data-unlock="2"' + (low ? ' disabled' : '') + '>Mix with styles</button></div></section>';
+}
+function viewStyles() {
+  var cs = combos(), ap = state.slots.filter(function (x) { return state.ok[x.id]; }).length;
+  var cnt = PILLARS.map(function (pl) { var c = pillarCount(pl.id); return '<span class="' + (c < 2 ? 'count bad' : 'count') + '">' + c + ' ' + pl.name + '</span>'; }).join(' · ');
+  return '<section class="panel">' +
+    '<div class="head"><span class="eyebrow">Step 3 · Styles</span><h2>Approve the topic and style mix</h2><p class="sub">Each topic keeps the pillar it was generated under (TOFU / MOFU / BOFU). The AI matches a style to that pillar. Change the style if you want, then approve.</p></div>' +
+    '<div class="row"><span class="count">' + cs.length + ' combos · </span>' + cnt + '<span class="grow"></span><button class="btn gold sm" id="apAll">Approve all recommendations</button></div>' +
+    '<div class="sub">Structures come from example videos and are a guide, not a fixed format. Comedic Explainer is in beta and is not offered yet.' + (state.team ? '' : ' No team on camera, so Game and POV are left out of the recommendations.') + '</div>' +
+    (coverageOk() ? '' : '<div class="note">Every funnel stage needs at least one topic. Go back and add one.</div>') +
+    '<div class="tablewrap"><div class="mix"><div class="mhead"><span>Topic</span><span>Pillar</span><span>Style</span><span>Approval</span></div>' +
+    cs.map(function (c) {
+      var ok = !!state.ok[c.id], st = styleById(c.style);
+      return '<div class="mrow' + (ok ? ' okrow' : '') + '"><span class="topic">' + esc(c.topic) + '</span>' +
+        '<span class="pl"><span class="dot ' + c.pillar.id + '"></span><span class="funnel ' + c.pillar.id + '">' + c.pillar.funnel + '</span> ' + c.pillar.name + '</span>' +
+        '<span class="sel"><select data-slotstyle="' + c.id + '" aria-label="Style for ' + esc(c.topic) + '">' +
+        STYLES.map(function (s) { return '<option value="' + s.id + '"' + (s.id === c.style ? ' selected' : '') + (s.beta ? ' disabled' : '') + '>' + s.name + (s.beta ? ' (beta, not offered yet)' : '') + (s.id === c.rec ? ' (recommended)' : '') + '</option>'; }).join('') + '</select></span>' +
+        '<button class="ap" data-ok="' + c.id + '" aria-pressed="' + ok + '">' + (ok ? 'Approved' : 'Approve') + '</button>' +
+        '<span class="hintline"><b>' + c.pillar.angle + ' · ' + esc(st.name) + '.</b> Typical: ' + esc(STYLE_INFO[st.id].struct) + '<br>Usually needs: ' + esc(STYLE_INFO[st.id].needs) + '</span></div>';
+    }).join('') + '</div></div>' +
+    '<div class="foot"><div class="row"><button class="btn ghost" data-go="1">Back</button><span class="count">' + ap + ' of ' + cs.length + ' approved</span></div>' +
+    '<button class="btn" data-go="3" data-unlock="3"' + (allApproved() ? '' : ' disabled') + '>Write blueprint content</button></div></section>';
+}
+function viewContent() {
+  var deck = buildContentDeck(), topics = buildTopics();
+  var total = topics.reduce(function (a, t) { return a + t.pieces.length; }, 0);
+  var di = Math.min(state.slide, deck.length - 1), ds = deck[di];
+  return '<section class="panel">' +
+    '<div class="head"><span class="eyebrow">Step 5 · Content (optional)</span><h2>Branch the strategy into content</h2><p class="sub">Two outputs: the client-facing content deck to present, and the internal list of content pieces to produce. Everything stays inside ' + esc(state.dna.name || 'this client') + '\'s offer and ICP.</p></div>' +
+    '<div class="row"><label class="f" for="numInput" style="flex-direction:row;align-items:center;gap:10px">How many contents?<input type="number" id="numInput" min="1" value="' + state.numContents + '" style="width:90px"></label><span class="count">' + total + ' pieces across ' + topics.length + ' combos</span></div>' +
+    '<div class="internal"><span class="tag">Part A · Client-facing deck</span><div class="tabs" id="tabs">' + deck.map(function (x, n) { return '<button data-slide="' + n + '" class="' + (n === di ? 'on' : '') + '" title="' + esc(x.name) + '">' + (n + 1) + '</button>'; }).join('') + '</div>' +
+    '<article class="slide"><div class="slidehead"><div><span class="eyebrow">Deck slide ' + (di + 1) + ' of ' + deck.length + '</span><h3>' + esc(ds.name) + '</h3></div><button class="btn ghost sm" data-copy="deck">Copy deck</button></div>' +
+    ds.items.map(function (it) {
+      if (it.h) return '<div class="item h"><span class="k">' + esc(it.k) + '</span></div>';
+      return '<div class="item"><span class="k">' + esc(it.k) + '</span>' + (it.list ? '<ul>' + it.list.map(function (x) { return '<li class="v">' + esc(x) + '</li>'; }).join('') + '</ul>' : '<span class="v">' + esc(it.v) + '</span>') + '</div>';
+    }).join('') + '</article></div>' +
+    '<div class="internal"><span class="tag">Part B · Internal content topics</span><div class="slidehead"><h3>Content pieces by combo</h3><button class="btn ghost sm" data-copy="topics">Copy all topics</button></div>' +
+    topics.map(function (t) {
+      var c = t.combo;
+      return '<div class="ctopic"><div class="pilhead"><span class="dot ' + c.pillar.id + '"></span><span class="funnel ' + c.pillar.id + '">' + c.pillar.funnel + '</span><b>' + esc(c.topic) + '</b><span class="sub">' + esc(t.style.name) + '</span><span class="count">' + t.pieces.length + '</span></div><ol class="pieces">' +
+        t.pieces.map(function (pc) { return '<li>' + esc(pc) + '</li>'; }).join('') + '</ol></div>';
+    }).join('') + '</div>' +
+    '<div class="note">Each piece becomes one video, shaped by its style (a ranking video ranks 8-10 items, a yes/no runs 9-20 questions). Allocation across Online / Offline / Association is left for later, as in your deck.</div>' +
+    '<div class="foot"><button class="btn ghost" data-go="3">Back to blueprint</button><button class="btn" data-copy="topics">Copy all content topics</button></div></section>';
+}
+function viewBlueprint() {
+  var slides = buildSlides(), i = state.slide, s = slides[i];
+  return '<section class="panel">' +
+    '<div class="head"><span class="eyebrow">Step 4 · Blueprint content</span><h2>Slide-by-slide content for ' + esc(state.dna.name || 'this client') + '</h2><p class="sub">Same fixed format every time (' + slides.length + ' slides). Text only, no designed slides. The content engine and the styles stay internal.</p></div>' +
+    '<div class="tabs" id="tabs">' + slides.map(function (x, n) { return '<button data-slide="' + n + '" class="' + (n === i ? 'on' : '') + '" title="' + esc(x.name) + '">' + (n + 1) + '</button>'; }).join('') + '</div>' +
+    '<article class="slide"><div class="slidehead"><div><span class="eyebrow">Slide ' + (i + 1) + ' of ' + slides.length + '</span><h3>' + esc(s.name) + '</h3></div><button class="btn ghost sm" data-copy="one">Copy slide text</button></div>' +
+    s.items.map(function (it) {
+      if (it.h) return '<div class="item h"><span class="k">' + esc(it.k) + '</span></div>';
+      return '<div class="item"><span class="k">' + esc(it.k) + '</span>' + (it.list ? '<ul>' + it.list.map(function (x) { return '<li class="v">' + esc(x) + '</li>'; }).join('') + '</ul>' : '<span class="v">' + esc(it.v) + '</span>') + '</div>';
+    }).join('') + '</article>' +
+    '<div class="fallback" id="fb" hidden><span class="sub">Copy was blocked here. Press Ctrl or Cmd + C to copy the selected text.</span><textarea id="fbt" readonly></textarea></div>' +
+    '<div class="note">Part 3 (titles and full content per topic and style) comes after the client upgrades. This blueprint only gives direction.</div>' +
+    '<div class="foot"><div class="row"><button class="btn ghost" data-go="2">Back to styles</button><button class="btn ghost" data-slide-nav="-1"' + (i === 0 ? ' disabled' : '') + '>Previous slide</button><button class="btn ghost" data-slide-nav="1"' + (i === slides.length - 1 ? ' disabled' : '') + '>Next slide</button></div><button class="btn" data-copy="all">Copy all ' + slides.length + ' slides</button></div>' + '<div class="foot"><span class="sub">Optional next step: branch the approved topics into content pieces.</span><button class="btn gold" data-go="4" data-unlock="4">Generate content →</button></div></section>';
+}
+function shellHtml() {
+  return '<div class="app">' +
+    '<header class="top"><div class="row"><button class="btn ghost sm" data-home>\u2190 Projects</button><h1 style="font-size:1.3rem;margin:0">' + esc(state.dna.name || state.projectName || 'Untitled client') + '</h1></div><span class="count" id="saveBadge">Saved</span></header>' +
+    '<nav class="steps" id="steps" aria-label="Steps"></nav><main id="main"></main></div>';
+}
+function render() {
+  var app = document.getElementById('app');
+  if (!window.__sb) { app.innerHTML = configWarning(); return; }
+  if (state.screen === 'home') { renderHome(); return; }
+  app.innerHTML = shellHtml();
+  renderSteps();
+  $('#main').innerHTML = [viewDna, viewTopics, viewStyles, viewBlueprint, viewContent][state.step]();
+  updateSaveBadge();
+  scheduleSave();
+}
+function timeago(ts) {
+  if (!ts) return '';
+  var s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+function configWarning() {
+  return '<div class="app"><section class="panel"><span class="eyebrow">Setup</span><h2>Add your Supabase keys</h2><p class="sub">Open config.js, paste your Supabase URL and anon key, then reload this page.</p></section></div>';
+}
+function blankDna() { return { person: '', name: '', title: '', industry: '', goal: '', experience: '', icp: '', offer: '' }; }
+function blankState() { return { phase: 'fresh', step: 0, preset: 'media', dna: blankDna(), sel: {}, slots: [], team: true, mixSig: '', ok: {}, slide: 0, numContents: 12 }; }
+var projects = [];
+function renderHome() {
+  var app = document.getElementById('app');
+  app.innerHTML = '<div class="app">' +
+    '<header class="top"><div><h1>Content Engine</h1><p class="sub">Your client projects</p></div><button class="btn" data-newproj>New client</button></header>' +
+    '<div class="plist">' + (projects === null ? '<p class="sub">Loading\u2026</p>' :
+      (projects.length ? projects.map(function (p) {
+        return '<div class="prow"><button class="btn ghost prow-open" data-open="' + p.id + '"><b>' + esc(p.name) + '</b></button><span class="count">' + esc(p.phase || 'fresh') + ' \u00b7 ' + timeago(p.updated_at) + '</span><button class="btn ghost sm" data-del="' + p.id + '" data-delname="' + esc(p.name) + '">Delete</button></div>';
+      }).join('') : '<p class="sub">No projects yet. Click New client to start.</p>')) + '</div></div>';
+}
+var sb = null;
+function initApp() {
+  var c = window.APP_CONFIG;
+  if (!c || !c.SUPABASE_URL || c.SUPABASE_URL.indexOf('YOUR-') >= 0) { document.getElementById('app').innerHTML = configWarning(); return; }
+  sb = window.supabase.createClient(c.SUPABASE_URL, c.SUPABASE_ANON_KEY);
+  window.__sb = sb;
+  goHome();
+}
+function goHome() { state.screen = 'home'; projects = null; renderHome(); loadProjects(); }
+function loadProjects() {
+  sb.from('projects').select('id,name,phase,updated_at').order('updated_at', { ascending: false }).then(function (r) {
+    projects = (r && r.data) || []; if (state.screen === 'home') renderHome();
+  });
+}
+function newProject() {
+  var name = window.prompt('Client name?', 'New client'); if (name === null) return;
+  sb.from('projects').insert({ name: name || 'Untitled client', phase: 'fresh', data: blankState() }).select().single().then(function (r) { if (r && r.data) openRow(r.data); });
+}
+function openProject(id) { sb.from('projects').select('*').eq('id', id).single().then(function (r) { if (r && r.data) openRow(r.data); }); }
+function openRow(row) {
+  var d = row.data || {}, st = blankState();
+  Object.keys(st).forEach(function (k) { if (d[k] !== undefined) st[k] = d[k]; });
+  Object.keys(state).forEach(function (k) { delete state[k]; });
+  Object.keys(st).forEach(function (k) { state[k] = st[k]; });
+  state.screen = 'project'; state.projectId = row.id; state.projectName = row.name; state.saved = true;
+  maxStep = st.step || 0;
+  render();
+}
+function deleteProject(id, name) {
+  if (!window.confirm('Delete "' + name + '"? This cannot be undone.')) return;
+  sb.from('projects').delete().eq('id', id).then(function () { loadProjects(); });
+}
+var saveTimer;
+function scheduleSave() { state.saved = false; updateSaveBadge(); clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 700); }
+function doSave() {
+  if (!state.projectId || !sb) return;
+  var data = {}; ['phase', 'step', 'preset', 'dna', 'sel', 'slots', 'team', 'mixSig', 'ok', 'slide', 'numContents'].forEach(function (k) { data[k] = state[k]; });
+  sb.from('projects').update({ name: state.dna.name || state.projectName || 'Untitled client', phase: state.phase || 'fresh', data: data }).eq('id', state.projectId).then(function () { state.saved = true; updateSaveBadge(); });
+}
+function updateSaveBadge() { var el = document.getElementById('saveBadge'); if (el) el.textContent = state.saved ? 'Saved' : 'Saving\u2026'; }
+var toastTimer;
+function toast(msg) { var t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 1800); }
+function copyText(text) {
+  var done = function () { toast('Copied'); };
+  var fail = function () { var fb = $('#fb'), ta = $('#fbt'); if (fb && ta) { fb.hidden = false; ta.value = text; ta.focus(); ta.select(); } };
+  try { navigator.clipboard.writeText(text).then(done, fail); } catch (e) { fail(); }
+}
+
+document.addEventListener('click', function (e) {
+  var el = e.target.closest('button'); if (!el) return;
+  if (el.hasAttribute('data-home')) { goHome(); return; }
+  if (el.hasAttribute('data-newproj')) { newProject(); return; }
+  if (el.dataset.open) { openProject(el.dataset.open); return; }
+  if (el.dataset.del) { deleteProject(el.dataset.del, el.dataset.delname || ''); return; }
+  if (el.dataset.team !== undefined) { state.team = el.dataset.team === '1'; render(); return; }
+  if (el.dataset.preset) { loadPreset(el.dataset.preset); maxStep = 0; render(); return; }
+  if (el.dataset.go !== undefined) {
+    var n = +el.dataset.go; if (el.disabled) return;
+    if (el.dataset.unlock) maxStep = Math.max(maxStep, n);
+    if (n === 2) buildMix();
+    if (n === 3 || n === 4) state.slide = 0;
+    state.step = n; render(); window.scrollTo(0, 0); return;
+  }
+  if (el.dataset.topic) { state.sel[el.dataset.topic] = !state.sel[el.dataset.topic]; maxStep = Math.min(maxStep, 1); render(); return; }
+  if (el.id === 'selAll') { PILLARS.forEach(function (pl) { pillarTopics(pl.id).forEach(function (t) { state.sel[t] = true; }); }); render(); return; }
+  if (el.dataset.ok) { state.ok[el.dataset.ok] = !state.ok[el.dataset.ok]; render(); return; }
+  if (el.id === 'apAll') { state.slots.forEach(function (x) { state.ok[x.id] = true; }); render(); return; }
+  if (el.dataset.slide) { state.slide = +el.dataset.slide; render(); return; }
+  if (el.dataset.slideNav) { state.slide = Math.max(0, Math.min(buildSlides().length - 1, state.slide + +el.dataset.slideNav)); render(); return; }
+  if (el.dataset.copy) {
+    if (el.dataset.copy === 'deck') { copyText(deckText()); return; }
+    if (el.dataset.copy === 'topics') { copyText(topicsText()); return; }
+    var sl = buildSlides();
+    copyText(el.dataset.copy === 'one' ? slideText(sl[state.slide], state.slide) : sl.map(slideText).join('\n'));
+  }
+});
+document.addEventListener('input', function (e) { if (e.target.id === 'numInput') { state.numContents = Math.max(1, parseInt(e.target.value, 10) || 1); return; } if (e.target.dataset && e.target.dataset.f) state.dna[e.target.dataset.f] = e.target.value; });
+document.addEventListener('change', function (e) {
+  var d = e.target.dataset; if (!d) return;
+  if (e.target.id === 'numInput') { state.numContents = Math.max(1, parseInt(e.target.value, 10) || 1); render(); return; }
+  if (!d.slotstyle) return;
+  var slot = state.slots.filter(function (x) { return x.id === d.slotstyle; })[0]; if (!slot) return;
+  slot.style = e.target.value; state.ok[d.slotstyle] = true; render();
+});
+
+initApp();
+</script>
+</body>
+</html>
