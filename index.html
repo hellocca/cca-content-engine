@@ -323,13 +323,21 @@ var PRESETS = {
   }
 };
 
+var EMPTY_PRESET = {
+  label: 'Blank', pains: [],
+  topics: { fun: [], exp: [], auth: [] },
+  venn: [['', ''], ['', '']], overlap: '', tagline: '', keywords: [], offline: [], belief: '', headed: '', quote: '', bio: '',
+  pillarNames: { fun: { name: 'Fun', sub: '', goal: '' }, exp: { name: 'Expertise', sub: '', goal: '' }, auth: { name: 'Authority', sub: '', goal: '' } },
+  contentDeck: { from: '', to: '', facets: ['', '', '', ''], claims: [], online: { tagline: '', groups: [] }, offline: { tagline: '', items: [] }, association: { tagline: '', groups: [] }, themes: [] },
+  contentBank: {}
+};
 var state = { screen: 'home', projectId: null, projectName: '', saved: true, phase: 'fresh', step: 0, preset: 'media', dna: {}, sel: {}, slots: [], team: true, mixSig: '', ok: {}, slide: 0, numContents: 12 };
 var maxStep = 0;
 var MIN_TOPICS = 4;
 
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function $(s) { return document.querySelector(s); }
-function P() { return PRESETS[state.preset]; }
+function P() { return state.presetData || EMPTY_PRESET; }
 function styleById(id) { return STYLES.filter(function (s) { return s.id === id; })[0]; }
 function pillarById(id) { return PILLARS.filter(function (p) { return p.id === id; })[0]; }
 
@@ -541,8 +549,6 @@ function viewDna() {
   var d = state.dna;
   return '<section class="panel">' +
     '<div class="head"><span class="eyebrow">Step 1 · Customer DNA</span><h2>Tell the engine who the client is</h2><p class="sub">The ICP matters most. Every topic and video direction comes from it.</p></div>' +
-    '<div class="row"><span class="sub">Load an example:</span><div class="seg" id="presets">' +
-    Object.keys(PRESETS).map(function (k) { return '<button data-preset="' + k + '" class="' + (state.preset === k ? 'on' : '') + '">' + PRESETS[k].label + '</button>'; }).join('') + '</div></div>' +
     '<div class="row"><span class="sub">Category:</span><div class="seg"><button class="on">Business owner</button><button disabled title="Next round">Coach / solopreneur (next round)</button></div></div>' +
     '<div class="row"><span class="sub">Team on camera:</span><div class="seg"><button data-team="1" class="' + (state.team ? 'on' : '') + '">Yes</button><button data-team="0" class="' + (state.team ? '' : 'on') + '">No, solo owner</button></div></div>' +
     '<div class="grid2">' + fieldHtml('person', 'Client name', '', d.person) + fieldHtml('name', 'Business / company name', '', d.name) + '</div>' +
@@ -651,12 +657,19 @@ function configWarning() {
   return '<div class="app"><section class="panel"><span class="eyebrow">Setup</span><h2>Add your Supabase keys</h2><p class="sub">Open config.js, paste your Supabase URL and anon key, then reload this page.</p></section></div>';
 }
 function blankDna() { return { person: '', name: '', title: '', industry: '', goal: '', experience: '', icp: '', offer: '' }; }
-function blankState() { return { phase: 'fresh', step: 0, preset: 'media', dna: blankDna(), sel: {}, slots: [], team: true, mixSig: '', ok: {}, slide: 0, numContents: 12 }; }
+function blankState() { return { phase: 'fresh', step: 0, preset: 'media', presetData: null, dna: blankDna(), sel: {}, slots: [], team: true, mixSig: '', ok: {}, slide: 0, numContents: 12 }; }
 var projects = [];
+function importPanel() {
+  return '<section class="panel"><div class="head"><span class="eyebrow">Import</span><h2>Paste generated project</h2><p class="sub">Paste the JSON Claude generated for this client, then Load.</p></div>' +
+    '<textarea id="importText" style="min-height:180px;font-size:0.8rem;font-family:ui-monospace,monospace" placeholder="Paste JSON here"></textarea>' +
+    '<div class="foot"><button class="btn ghost" data-import-cancel>Cancel</button><button class="btn" data-import-load>Load into app</button></div>' +
+    '<div class="sub" id="importErr" style="color:var(--warn)"></div></section>';
+}
 function renderHome() {
   var app = document.getElementById('app');
   app.innerHTML = '<div class="app">' +
-    '<header class="top"><div><h1>Content Engine</h1><p class="sub">Your client projects</p></div><button class="btn" data-newproj>New client</button></header>' +
+    '<header class="top"><div><h1>Content Engine</h1><p class="sub">Your client projects</p></div><div class="row"><button class="btn ghost" data-blank>Blank client</button><button class="btn" data-import>Import from Claude</button></div></header>' +
+    (state.importing ? importPanel() : '') +
     '<div class="plist">' + (projects === null ? '<p class="sub">Loading\u2026</p>' :
       (projects.length ? projects.map(function (p) {
         return '<div class="prow"><button class="btn ghost prow-open" data-open="' + p.id + '"><b>' + esc(p.name) + '</b></button><span class="count">' + esc(p.phase || 'fresh') + ' \u00b7 ' + timeago(p.updated_at) + '</span><button class="btn ghost sm" data-del="' + p.id + '" data-delname="' + esc(p.name) + '">Delete</button></div>';
@@ -680,6 +693,16 @@ function newProject() {
   var name = window.prompt('Client name?', 'New client'); if (name === null) return;
   sb.from('projects').insert({ name: name || 'Untitled client', phase: 'fresh', data: blankState() }).select().single().then(function (r) { if (r && r.data) openRow(r.data); });
 }
+function doImport() {
+  var ta = document.getElementById('importText'), errEl = document.getElementById('importErr');
+  var obj; try { obj = JSON.parse(ta.value); } catch (e) { errEl.textContent = 'Invalid JSON: ' + e.message; return; }
+  var data = obj.data || obj;
+  var name = obj.name || (data.dna && data.dna.name) || 'Imported client';
+  errEl.textContent = 'Loading\u2026';
+  sb.from('projects').insert({ name: name, phase: data.phase || 'fresh', data: data }).select().single().then(function (r) {
+    if (r && r.data) { state.importing = false; openRow(r.data); } else { errEl.textContent = 'Save failed. Check Supabase connection.'; }
+  });
+}
 function openProject(id) { sb.from('projects').select('*').eq('id', id).single().then(function (r) { if (r && r.data) openRow(r.data); }); }
 function openRow(row) {
   var d = row.data || {}, st = blankState();
@@ -698,7 +721,7 @@ var saveTimer;
 function scheduleSave() { state.saved = false; updateSaveBadge(); clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 700); }
 function doSave() {
   if (!state.projectId || !sb) return;
-  var data = {}; ['phase', 'step', 'preset', 'dna', 'sel', 'slots', 'team', 'mixSig', 'ok', 'slide', 'numContents'].forEach(function (k) { data[k] = state[k]; });
+  var data = {}; ['phase', 'step', 'preset', 'presetData', 'dna', 'sel', 'slots', 'team', 'mixSig', 'ok', 'slide', 'numContents'].forEach(function (k) { data[k] = state[k]; });
   sb.from('projects').update({ name: state.dna.name || state.projectName || 'Untitled client', phase: state.phase || 'fresh', data: data }).eq('id', state.projectId).then(function () { state.saved = true; updateSaveBadge(); });
 }
 function updateSaveBadge() { var el = document.getElementById('saveBadge'); if (el) el.textContent = state.saved ? 'Saved' : 'Saving\u2026'; }
@@ -713,7 +736,10 @@ function copyText(text) {
 document.addEventListener('click', function (e) {
   var el = e.target.closest('button'); if (!el) return;
   if (el.hasAttribute('data-home')) { goHome(); return; }
-  if (el.hasAttribute('data-newproj')) { newProject(); return; }
+  if (el.hasAttribute('data-blank')) { newProject(); return; }
+  if (el.hasAttribute('data-import')) { state.importing = true; renderHome(); return; }
+  if (el.hasAttribute('data-import-cancel')) { state.importing = false; renderHome(); return; }
+  if (el.hasAttribute('data-import-load')) { doImport(); return; }
   if (el.dataset.open) { openProject(el.dataset.open); return; }
   if (el.dataset.del) { deleteProject(el.dataset.del, el.dataset.delname || ''); return; }
   if (el.dataset.team !== undefined) { state.team = el.dataset.team === '1'; render(); return; }
